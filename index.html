@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResearchDAO: Decentralized Research Funding</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--ink:#14172b;--mut:#5d6380;--line:#e3e6f0;--acc:#4338ca;--acc2:#0d9488;--bad:#be123c;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1020;--card:#161a30;--ink:#eef0fb;--mut:#9aa1c4;--line:#262b4a;--acc:#818cf8;--acc2:#2dd4bf;--bad:#fb7185;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Georgia,'Times New Roman',serif}
+h1,h2,h3,nav,button,.tag,label{font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0}
+.logo{font:700 20px system-ui;color:var(--acc);text-decoration:none}nav{display:flex;flex-wrap:wrap;gap:4px}nav a{padding:6px 10px;border-radius:8px;color:var(--mut);text-decoration:none;font-size:14px}nav a.on,nav a:hover{background:var(--bg);color:var(--ink)}
+main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
+.hero{padding:48px 0}.hero h1{font-size:clamp(30px,5vw,52px);line-height:1.1;margin:0 0 14px}.hero p{max-width:640px;color:var(--mut);font-size:17px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.tag{display:inline-block;font-size:12px;padding:2px 9px;border-radius:99px;background:var(--bg);color:var(--acc);border:1px solid var(--line);margin-right:6px}
+.bar{height:8px;background:var(--line);border-radius:9px;overflow:hidden;margin:10px 0 4px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+button,.btn{background:var(--acc);color:#fff;border:0;border-radius:9px;padding:8px 14px;font-size:14px;cursor:pointer;text-decoration:none;display:inline-block}button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}button.bad{background:var(--bad)}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;margin:4px 0 10px}label{font-size:13px;color:var(--mut)}
+.tl{border-left:2px solid var(--line);margin-left:8px;padding-left:16px}.tl>div{margin:0 0 14px;position:relative}.tl>div:before{content:"";position:absolute;left:-23px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--line)}.tl>.s2:before,.tl>.s3:before{background:var(--acc2)}.tl>.s1:before{background:var(--acc)}
+.note{border-left:3px solid var(--acc);padding:8px 12px;background:var(--card);color:var(--mut);font-size:13px;margin:14px 0;border-radius:6px}.mut{color:var(--mut)}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:7px;border-bottom:1px solid var(--line);font-size:13px}
+</style></head><body>
+<header><a class="logo" href="#/">◈ ResearchDAO</a>
+<nav id="nav"></nav><button id="cw">Connect wallet</button></header>
+<main id="app"></main>
+<script>
+const CONFIG={address:"0x0000000000000000000000000000000000000000",chainId:null,decimals:18,symbol:"BOT/USDT"};
+const ABI=[
+"function admin() view returns (address)","function reviewers(address) view returns (bool)",
+"function researchers(address) view returns (string name,string profileURI,bytes32 profileHash,bool registered)",
+"function rounds(uint256) view returns (string name,address token,uint256 maxBudget,uint64 votingPeriod,uint64 fundingPeriod,uint256 quorum,uint8 reviewThreshold,bool open)",
+"function proposalCount() view returns (uint256)","function roundCount() view returns (uint256)",
+"function getProposal(uint256) view returns (tuple(uint256 roundId,address researcher,string title,string category,string metadataURI,bytes32 metadataHash,uint256 budget,uint256 raised,uint256 paid,uint8 status,uint64 voteEnd,uint64 fundEnd,uint256 yes,uint256 no,uint8 reviewApprovals))",
+"function getMilestones(uint256) view returns (tuple(string description,uint256 amount,uint8 state,bytes32 evidenceHash,string evidenceURI,uint8 approvals)[])",
+"function contributions(uint256,address) view returns (uint256)","function hasVoted(uint256,address) view returns (bool)",
+"function setReviewer(address,bool)","function createRound(string,address,uint256,uint64,uint64,uint256,uint8) returns (uint256)","function closeRound(uint256)",
+"function registerResearcher(string,string,bytes32)","function submitProposal(uint256,string,string,string,bytes32,string[],uint256[]) returns (uint256)",
+"function vote(uint256,bool)","function review(uint256,bool)","function finalizeVoting(uint256)","function contribute(uint256,uint256)",
+"function finalizeFunding(uint256)","function cancel(uint256)","function submitMilestone(uint256,uint256,bytes32,string)",
+"function verifyMilestone(uint256,uint256,bool)","function authorizePayment(uint256,uint256)","function refund(uint256)",
+"event Disbursed(uint256 indexed id,uint256 index,address indexed to,uint256 amount)","event Contributed(uint256 indexed id,address indexed funder,uint256 amount)"];
+const ERC=["function approve(address,uint256) returns (bool)","function allowance(address,address) view returns (uint256)"];
+const ST=["None","Voting","Funding","Active","Completed","Rejected","Failed","Cancelled"],MS=["Pending","Submitted","Verified","Paid"];
+const CATS=["Biology","Climate","Medicine","Physics","Computer Science","Social Science","Materials"];
+let provider,signer,me,dao,ro;
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=v=>Number(ethers.formatUnits(v,CONFIG.decimals)).toLocaleString(undefined,{maximumFractionDigits:2});
+const short=a=>a.slice(0,6)+"…"+a.slice(-4),pct=(a,b)=>b>0n?Number(a*100n/b):0;
+const time=t=>new Date(Number(t)*1000).toLocaleString();
+async function connect(){if(!window.ethereum)return alert("Install a wallet such as MetaMask.");
+ provider=new ethers.BrowserProvider(window.ethereum);await provider.send("eth_requestAccounts",[]);
+ if(CONFIG.chainId&&(await provider.getNetwork()).chainId!=BigInt(CONFIG.chainId))await provider.send("wallet_switchEthereumChain",[{chainId:"0x"+CONFIG.chainId.toString(16)}]);
+ signer=await provider.getSigner();me=await signer.getAddress();dao=new ethers.Contract(CONFIG.address,ABI,signer);$("#cw").textContent=short(me);route();}
+function reader(){if(dao)return dao;if(!ro&&window.ethereum){ro=new ethers.Contract(CONFIG.address,ABI,new ethers.BrowserProvider(window.ethereum));}return ro;}
+async function tx(fn,msg){try{const t=await fn();await t.wait();route();}catch(e){alert((msg||"Transaction failed")+": "+(e.reason||e.shortMessage||e.message));}}
+const need=()=>{if(!dao){alert("Connect your wallet first.");return false}return true};
+async function allP(){const c=reader();if(!c)return[];const n=Number(await c.proposalCount());return Promise.all([...Array(n).keys()].map(async i=>({id:i,p:await c.getProposal(i)})));}
+const card=({id,p})=>`<div class="card"><span class="tag">${esc(p.category)}</span><span class="tag">${ST[p.status]}</span>
+<h3><a href="#/proposal/${id}" style="color:inherit;text-decoration:none">${esc(p.title)}</a></h3><div class="mut">by ${short(p.researcher)}</div>
+<div class="bar"><i style="width:${pct(p.raised,p.budget)}%"></i></div><div class="row mut"><span>${fmt(p.raised)} / ${fmt(p.budget)} funded</span><span>·</span><span>${p.yes} yes / ${p.no} no</span></div></div>`;
+const tl=(ms,pid,p)=>`<div class="tl">${ms.map((m,i)=>`<div class="s${m.state}"><b>${i+1}. ${esc(m.description)}</b> <span class="tag">${MS[m.state]}</span> <span class="mut">${fmt(m.amount)}</span>
+${m.evidenceHash!=ethers.ZeroHash?`<div class="mut">Evidence hash ${short(m.evidenceHash)} ${esc(m.evidenceURI)}</div>`:""}
+<div class="row">${msActions(pid,i,m,p)}</div></div>`).join("")}</div>`;
+function msActions(pid,i,m,p){if(!me)return"";let b="";
+ if(m.state==0&&p.status==3&&p.researcher.toLowerCase()==me.toLowerCase())b+=`<button onclick="subMs(${pid},${i})">Submit completion</button>`;
+ if(m.state==1)b+=`<button class="alt" onclick="tx(()=>dao.verifyMilestone(${pid},${i},true))">Verify</button><button class="alt" onclick="tx(()=>dao.verifyMilestone(${pid},${i},false))">Reject</button>`;
+ if(m.state==2)b+=`<button onclick="tx(()=>dao.authorizePayment(${pid},${i}))">Authorize payment</button>`;return b;}
+window.tx=tx;window.subMs=(pid,i)=>{if(!need())return;const u=prompt("Public evidence URI (IPFS/HTTPS). Do not link confidential data:");if(u===null)return;
+ const note=prompt("Short public completion note (hashed with the URI):")||"";tx(()=>dao.submitMilestone(pid,i,ethers.id(u+"|"+note),u));};
+const notice=`<div class="note"><b>Wallet voting ≠ one person, one vote.</b> Votes are counted per wallet address and do not prove unique human identity. Reviewer approval and quorum add safeguards, but a determined actor can use many wallets.</div>`;
+const V={
+async "/"(){const ps=await allP();return`<section class="hero"><span class="tag">Onchain research funding</span><h1>Fund science in the open.<br>Release money only when milestones are verified.</h1>
+<p>Researchers publish proposals, the community and reviewers decide, funders contribute BOT or USDT, and payments flow milestone by milestone with a public record.</p>
+<div class="row"><a class="btn" href="#/explore">Explore research</a><a class="btn" style="background:var(--acc2)" href="#/submit">Submit a proposal</a></div></section>
+<div class="grid">${CATS.map(c=>`<a class="card" href="#/explore/${encodeURIComponent(c)}" style="text-decoration:none;color:inherit"><h3>${c}</h3><span class="mut">${ps.filter(x=>x.p.category==c).length} proposals</span></a>`).join("")}</div>
+<h2>How it works</h2><div class="grid">${["1 · Propose|Budget, objectives and milestones with hashed metadata.","2 · Decide|Wallet vote + reviewer approval, with quorum.","3 · Fund|Contributions escrowed in the treasury; refunds if it fails.","4 · Deliver|Milestone evidence, verification, payment."].map(s=>`<div class="card"><h3>${s.split("|")[0]}</h3><span class="mut">${s.split("|")[1]}</span></div>`).join("")}</div>${notice}`},
+async "/explore"(arg){const cat=arg&&decodeURIComponent(arg);const ps=(await allP()).filter(x=>!cat||x.p.category==cat);
+ return`<h2>Research explorer ${cat?`· ${esc(cat)}`:""}</h2><div class="row">${CATS.map(c=>`<a class="tag" href="#/explore/${encodeURIComponent(c)}">${c}</a>`).join("")}<a class="tag" href="#/explore">All</a></div><br><div class="grid">${ps.map(card).join("")||'<p class="mut">No proposals yet.</p>'}</div>`},
+async "/proposal"(id){const c=reader(),p=await c.getProposal(id),ms=await c.getMilestones(id),r=await c.rounds(p.roundId);const mine=me?await c.contributions(id,me):0n;
+ const isR=me&&p.researcher.toLowerCase()==me.toLowerCase();
+ return`<span class="tag">${esc(p.category)}</span><span class="tag">${ST[p.status]}</span><h2>${esc(p.title)}</h2>
+ <p class="mut">Researcher ${p.researcher} · Round: ${esc(r.name)} · Metadata ${esc(p.metadataURI)} · Hash ${short(p.metadataHash)}</p>
+ <div class="card"><b>Funding</b><div class="bar"><i style="width:${pct(p.raised,p.budget)}%"></i></div>${fmt(p.raised)} raised of ${fmt(p.budget)} budget · ${fmt(p.paid)} disbursed${p.status==2?` · funding closes ${time(p.fundEnd)}`:""}</div><br>
+ <div class="card"><b>Governance</b> (wallet-based) · ${p.yes} yes / ${p.no} no · quorum ${r.quorum} wallet votes · reviewer approvals ${p.reviewApprovals}/${r.reviewThreshold}${p.status==1?` · voting ends ${time(p.voteEnd)}`:""}
+ <div class="row" style="margin-top:8px">${p.status==1?`<button onclick="vt(${id},true)">Vote yes</button><button class="alt" onclick="vt(${id},false)">Vote no</button><button class="alt" onclick="tx(()=>dao.finalizeVoting(${id}))">Finalize vote</button>`:""}</div>${notice}</div><br>
+ ${p.status==2?`<div class="card"><b>Contribute</b><input id="amt" placeholder="Amount"><button onclick="contrib(${id},'${r.token}')">Approve &amp; contribute</button> <button class="alt" onclick="tx(()=>dao.finalizeFunding(${id}))">Close expired round</button></div><br>`:""}
+ <h3>Milestones</h3>${tl(ms,id,p)}
+ <div class="row">${isR&&p.status<4?`<button class="bad" onclick="tx(()=>dao.cancel(${id}))">Cancel proposal</button>`:""}${mine>0n&&p.status>=5&&p.status!=4?`<button onclick="tx(()=>dao.refund(${id}))">Claim refund</button>`:""}</div>`},
+async "/submit"(){const c=reader(),n=c?Number(await c.roundCount()):0,rs=await Promise.all([...Array(n).keys()].map(i=>c.rounds(i)));const reg=me?(await c.researchers(me)).registered:false;
+ return`<h2>Submit research proposal</h2><div class="note">Store only public summaries and hashes onchain. Keep confidential data, datasets and personal information off-chain.</div>
+ <div class="card"><h3>1. Researcher profile</h3>${reg?"<p>✔ Registered</p>":`<label>Name / lab</label><input id="rn"><label>Public profile URI</label><input id="ru"><button onclick="regR()">Register</button>`}</div><br>
+ <div class="card"><h3>2. Proposal</h3><label>Round</label><select id="rd">${rs.map((r,i)=>r.open?`<option value="${i}">${esc(r.name)} (max ${fmt(r.maxBudget)})</option>`:"").join("")}</select>
+ <label>Title</label><input id="t"><label>Category</label><select id="cat">${CATS.map(c=>`<option>${c}</option>`).join("")}</select>
+ <label>Public objectives summary (hashed)</label><textarea id="obj" rows="3"></textarea><label>Reference URI (paper, preprint, IPFS)</label><input id="uri">
+ <label>Milestones: one per line as <code>description | amount</code></label><textarea id="ms" rows="4" placeholder="Literature review | 100&#10;Pilot study | 400"></textarea><button onclick="subP()">Publish proposal</button></div>`},
+async "/researcher"(){if(!me)return"<p>Connect a wallet.</p>";const mine=(await allP()).filter(x=>x.p.researcher.toLowerCase()==me.toLowerCase());
+ let out=`<h2>Researcher dashboard</h2><p class="mut">${short(me)}</p><div class="grid">${mine.map(card).join("")||'<p class="mut">No proposals yet.</p>'}</div>`;
+ for(const x of mine)out+=`<h3>${esc(x.p.title)}: milestones</h3>${tl(await dao.getMilestones(x.id),x.id,x.p)}`;return out},
+async "/funder"(){if(!me)return"<p>Connect a wallet.</p>";const ps=await allP(),rows=[];
+ for(const x of ps){const c=await dao.contributions(x.id,me);if(c>0n)rows.push([x,c]);}
+ const ev=await dao.queryFilter(dao.filters.Disbursed());
+ return`<h2>Funder dashboard</h2><h3>Your contributions</h3><table><tr><th>Proposal</th><th>Contributed</th><th>Progress</th><th>Status</th></tr>${rows.map(([x,c])=>`<tr><td><a href="#/proposal/${x.id}">${esc(x.p.title)}</a></td><td>${fmt(c)}</td><td>${pct(x.p.raised,x.p.budget)}%</td><td>${ST[x.p.status]}</td></tr>`).join("")}</table>
+ <h3>Public disbursement records</h3><table><tr><th>Proposal</th><th>Milestone</th><th>To</th><th>Amount</th></tr>${ev.map(e=>`<tr><td>#${e.args.id}</td><td>${Number(e.args.index)+1}</td><td>${short(e.args.to)}</td><td>${fmt(e.args.amount)}</td></tr>`).join("")}</table>`},
+async "/governance"(){const ps=(await allP()).filter(x=>x.p.status==1);const rv=me&&await dao.reviewers(me);
+ return`<h2>DAO governance</h2>${notice}<div class="grid">${ps.map(x=>`${card(x)}`).join("")||'<p class="mut">No proposals open for voting.</p>'}</div>
+ ${ps.map(x=>`<div class="card" style="margin-top:12px"><b>${esc(x.p.title)}</b> · ends ${time(x.p.voteEnd)}<div class="row"><button onclick="vt(${x.id},true)">Vote yes</button><button class="alt" onclick="vt(${x.id},false)">Vote no</button>${rv?`<button class="alt" onclick="tx(()=>dao.review(${x.id},true))">Reviewer: approve</button><button class="bad" onclick="tx(()=>dao.review(${x.id},false))">Reviewer: reject</button>`:""}</div></div>`).join("")}`},
+async "/milestones"(){const ps=(await allP()).filter(x=>x.p.status==3||x.p.status==4);let o="<h2>Milestone tracking</h2>";
+ for(const x of ps)o+=`<h3><a href="#/proposal/${x.id}">${esc(x.p.title)}</a></h3>${tl(await reader().getMilestones(x.id),x.id,x.p)}`;return o+(ps.length?"":'<p class="mut">No funded proposals yet.</p>')},
+async "/admin"(){const isA=me&&(await dao.admin()).toLowerCase()==me.toLowerCase();if(!isA)return"<h2>Admin</h2><p>Connect the admin wallet.</p>";
+ return`<h2>Admin dashboard</h2><div class="card"><h3>Create funding round</h3><label>Name</label><input id="an"><label>Token address (BOT or USDT)</label><input id="at"><label>Max budget per proposal</label><input id="am">
+ <label>Voting period (hours)</label><input id="av" value="72"><label>Funding period (hours)</label><input id="af" value="168"><label>Quorum (wallet votes)</label><input id="aq" value="10"><label>Reviewer approvals required</label><input id="ar" value="1"><button onclick="mkRound()">Create round</button></div><br>
+ <div class="card"><h3>Reviewers</h3><input id="rv" placeholder="0x…"><div class="row"><button onclick="tx(()=>dao.setReviewer(rv.value,true))">Add</button><button class="alt" onclick="tx(()=>dao.setReviewer(rv.value,false))">Remove</button></div></div>
+ <p class="mut">Verification and payment authorization are on the Milestones page.</p>`}};
+window.vt=(id,s)=>need()&&tx(()=>dao.vote(id,s),"Vote failed");
+window.contrib=async(id,tok)=>{if(!need())return;const a=ethers.parseUnits($("#amt").value||"0",CONFIG.decimals),t=new ethers.Contract(tok,ERC,signer);
+ try{if(await t.allowance(me,CONFIG.address)<a)await(await t.approve(CONFIG.address,a)).wait();}catch(e){return alert(e.shortMessage||e.message)}tx(()=>dao.contribute(id,a));};
+window.regR=()=>need()&&tx(()=>dao.registerResearcher($("#rn").value,$("#ru").value,ethers.id($("#rn").value+"|"+$("#ru").value)));
+window.subP=()=>{if(!need())return;const L=$("#ms").value.trim().split("\n").map(l=>l.split("|").map(s=>s.trim()));
+ tx(()=>dao.submitProposal($("#rd").value,$("#t").value,$("#cat").value,$("#uri").value,ethers.id($("#obj").value+"|"+$("#uri").value),L.map(l=>l[0]),L.map(l=>ethers.parseUnits(l[1],CONFIG.decimals))));};
+window.mkRound=()=>tx(()=>dao.createRound($("#an").value,$("#at").value,ethers.parseUnits($("#am").value,CONFIG.decimals),$("#av").value*3600,$("#af").value*3600,$("#aq").value,$("#ar").value));
+const LINKS=[["/","Home"],["/explore","Explorer"],["/submit","Submit"],["/researcher","Researcher"],["/funder","Funder"],["/governance","Governance"],["/milestones","Milestones"],["/admin","Admin"]];
+async function route(){const [,k,arg]=(location.hash||"#/").slice(1).split("/");const key="/"+(k||"");
+ $("#nav").innerHTML=LINKS.map(([h,l])=>`<a href="#${h}" class="${h==key?"on":""}">${l}</a>`).join("");
+ $("#app").innerHTML='<p class="mut">Loading…</p>';
+ try{if(!reader()&&key!="/")throw new Error("Wallet required to read chain data. Click Connect wallet.");
+  if(/^0x0+$/.test(CONFIG.address)&&key!="/")throw new Error("Set CONFIG.address in index.html to your deployed ResearchDAO.");
+  $("#app").innerHTML=await(V[key]||V["/"])(arg);}catch(e){$("#app").innerHTML=`<div class="note">${esc(e.shortMessage||e.message)}</div>`;}}
+$("#cw").onclick=connect;addEventListener("hashchange",route);route();
+</script></body></html>
